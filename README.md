@@ -1,6 +1,8 @@
 freddy
 ======
 
+[![Build Status](https://travis-ci.org/mwhite/freddy.png)](https://travis-ci.org/mwhite/freddy)
+
 freddy is a Python consumer for the [Facility Registry API][1] (currently
 version 1.0).
 

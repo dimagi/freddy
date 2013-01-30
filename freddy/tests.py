@@ -1,16 +1,30 @@
 import unittest
-from . import Registry
+import freddy
 from dateutil.parser import parse
 import datetime
+import pytz
+import requests
+import uuid
 
 INACTIVE_FACILITY_ID = 'cdmkMyYv04T'
+
+
+def utcnow():
+    return datetime.datetime.utcnow().replace(tzinfo=pytz.utc)
 
 
 class TestFacilityRegistry(unittest.TestCase):
     
     def setUp(self):
-        self.registry = Registry('http://apps.dhis2.org/dev/api-fred/v1/',
-                username='system', password='System123')
+        self.registry = freddy.Registry(
+            'http://apps.dhis2.org/dev/api-fred/v1',
+            username='system', password='System123')
+
+        self._created_facility_ids = []
+
+    def tearDown(self):
+        for id in self._created_facility_ids:
+            self.registry.api.delete(id)
 
     def test_get_facility(self):
         id = 'ueuQlqb8ccl'
@@ -31,13 +45,77 @@ class TestFacilityRegistry(unittest.TestCase):
         self.assertIsInstance(facility['updatedAt'], datetime.datetime)
         self.assertEqual(identifiers, facility['identifiers'])
         self.assertEqual(4, facility['properties']['level'])
+    
+    def _create_facility(self):
+        facility = self.registry.create(
+            name=str(uuid.uuid4()), coordinates=[32.5468, -23.20])
 
-    def test_filter_inactive_facilities(self):
-        facilities = self.registry.facilities.filter(active=False).all()
+        facility.save()
+        self._created_facility_ids.append(facility['id'])
+
+        return facility
+
+    def test_create_facility(self):
+        created_at = utcnow() - datetime.timedelta(minutes=1)
+
+        facility = self._create_facility()
+        self.assertTrue(facility['id'])
+        self.assertIsNone(facility['createdAt'])
+        self.assertIsNone(facility['updatedAt'])
+
+        r = requests.get(facility['url'])
+        r.raise_for_status()
+
+        same_facility = self.registry.get(facility['id'])
+        self.assertLess(created_at, same_facility['createdAt'])
+        self.assertLess(created_at, same_facility['updatedAt'])
+        for k, v in same_facility:
+            if (k not in ('createdAt', 'updatedAt') and
+                k != 'properties'):  # test server creates default properties?
+                self.assertEqual(v, facility[k])
+
+    def test_update_facility(self):
+        facility = self._create_facility()
+        self.assertFalse(facility.is_modified)
+
+        facility['name'] = str(uuid.uuid4())
+        self.assertTrue(facility.is_modified)
+
+        facility.save()
+
+        self.assertFalse(facility.is_modified)
+
+        same_facility = self.registry.get(facility['id'])
+        self.assertEqual(facility['name'], same_facility['name'])
+
+    def test_delete_facility(self):
+        facility = self._create_facility()
+        facility.delete()
+
+        with self.assertRaises(freddy.FREDError):
+            facility['name'] = 'foo'
+
+        with self.assertRaises(freddy.FREDError):
+            facility.save()
+
+        with self.assertRaises(freddy.FREDError):
+            facility.delete()
+
+        with self.assertRaises(requests.HTTPError):
+            self.registry.get(facility['id'])
+
+        with self.assertRaises(requests.HTTPError):
+            self.registry.api.delete(facility['id'])
+
+        self._created_facility_ids = []
+
+    def test_filter_by_inactive(self):
+        facilities = list(self.registry.facilities.filter(active=False).all())
         
         id = INACTIVE_FACILITY_ID
 
         self.assertTrue(any(f['id'] == id for f in facilities))
+        self.assertGreater(10, len(facilities))
 
     def test_facilities_iteration(self):
         for f in self.registry.facilities.filter(active=False):
@@ -48,7 +126,7 @@ class TestFacilityRegistry(unittest.TestCase):
         self.assertTrue(False)
 
     def test_get_facility_partial_response(self):
-        return  # server error (probably)
+        return  # server error
 
         facilities = self.registry.facilities.filter(
             active=False
@@ -56,8 +134,18 @@ class TestFacilityRegistry(unittest.TestCase):
 
         for f in facilities:
             self.assertEqual(None, f['name'])
+            self.assertTrue(f['createdAt'])
+            self.assertTrue(f['url'])
+
+    def test_filter_by_updated_since(self):
+        date = utcnow() - datetime.timedelta(days=200)
+
+        all_facilities = list(self.registry.facilities.all())
+        facilities = list(self.registry.facilities.filter(updatedSince=date))
+
+        self.assertLess(len(facilities), len(all_facilities))
+        self.assertTrue(all(f['updatedAt'] >= date for f in facilities))
 
 
 if __name__ == '__main__':
     unittest.main()
-

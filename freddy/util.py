@@ -3,6 +3,7 @@ import pytz
 import types
 import json
 
+
 class PropertyDict(dict):
     """
     Dict where keys must be alphanumeric and start with a letter, and
@@ -30,11 +31,11 @@ def to_json(val):
         val.replace(tzinfo=pytz.utc)
         return val.isoformat()
     else:
-        return str(val)
+        return val
 
 
 def to_json_string(data):
-    return json.dumps(dict((k, to_json(v)) for k, v in data))
+    return json.dumps(dict((k, to_json(v)) for k, v in data.items()))
 
 
 def to_urlparam(val):

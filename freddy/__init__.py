@@ -30,7 +30,7 @@ class RegistryAPI(object):
             r.raise_for_status()
         except Exception as e:
             args = list(e.args)
-            args[0] = args[0] + " Message was: {0}".format(e.response.content)
+            args[0] = args[0] + ". Response body was: {0}".format(e.response.content)
             e.args = args
             raise
 
@@ -45,15 +45,17 @@ class RegistryAPI(object):
 
     def create(self, data):
         r = self.request('POST', '/facilities.json',
-                data=to_json_string(data))
-        return r.content
+                         data=to_json_string(data),
+                         headers={'Content-Type': 'application/json'})
+        return r.headers['Location']
 
     def update(self, id, data):
         if not id:
             raise TypeError("Tried to update a facility with a null id.")
 
         r = self.request('PUT', '/facilities/{id}.json'.format(id=id),
-                data=to_json_string(data))
+                         data=to_json_string(data),
+                         headers={'Content-Type': 'application/json'})
         return r.json()
 
     def delete(self, id):
@@ -103,16 +105,22 @@ class Registry(object):
         and non-null core properties.
         
         """
-        if facility.id:
-            self.api.update(facility.id, facility)
+        if facility['active'] is None:
+            raise FREDError("active must not be None.")
+        if facility['coordinates'] is None:
+            raise FREDError("coordinates must not be None.")
+
+        if facility['id']:
+            self.api.update(facility['id'], dict(facility))
         else:
-            id = self.api.create(facility)
-            facility.id = id
+            url = self.api.create(dict(facility))
+            facility['url'] = url
+            facility['id'] = url.split('/')[-1]  # this is not ok
 
     def delete(self, facility):
         """Delete `facility` from the server."""
 
-        self.api.delete(facility.id)
+        self.api.delete(facility['id'])
 
     @property
     def facilities(self):
@@ -152,6 +160,8 @@ class Facility(object):
     def __init__(self, registry=None, is_new=True, properties=None,
                  **core_properties):
         properties = properties or {}
+        core_properties['active'] = core_properties.get('active', True)
+
         self.registry = registry
         self.is_new = is_new
         self._deleted = False
@@ -169,7 +179,7 @@ class Facility(object):
             (p, self._convert_date(p, v)) for p, v in properties.items())
     
     def delete(self):
-        if not self.id:
+        if not self['id']:
             raise FREDError("Tried to delete an unsaved facility.")
         if self._deleted:
             raise FREDError("Tried to delete a deleted facility.")
@@ -186,6 +196,7 @@ class Facility(object):
         self.core_properties.is_modified = False
         self.extended_properties.is_modified = False
 
+    @property
     def is_modified(self):
         return (self.is_new or self.core_properties.is_modified or
                 self.extended_properties.is_modified)
@@ -206,9 +217,10 @@ class Facility(object):
             raise KeyError("Invalid key: %s" % name)
 
     def __setitem__(self, name, val):
-        if name == 'url':
-            raise KeyError("Tried to set a facility's URL.")
-        elif name in self.CORE_PROPERTIES:
+        if self._deleted:
+            raise FREDError("Tried to modify a deleted facility.")
+
+        if name in self.CORE_PROPERTIES:
             self.core_properties[name] = val
         else:
             raise KeyError("Invalid key: %s" % name)

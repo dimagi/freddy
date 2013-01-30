@@ -36,7 +36,7 @@ class RegistryAPI(object):
             raise
 
         return r
-    
+
     def get(self, id):
         if not id:
             raise TypeError("Tried to get a facility with a null id.")

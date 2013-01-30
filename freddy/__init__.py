@@ -30,7 +30,8 @@ class RegistryAPI(object):
             r.raise_for_status()
         except Exception as e:
             args = list(e.args)
-            args[0] = args[0] + ". Response body was: {0}".format(e.response.content)
+            args[0] = args[0] + ". Response body was: {0}".format(
+                    e.response.content)
             e.args = args
             raise
 

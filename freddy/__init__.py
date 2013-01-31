@@ -65,7 +65,7 @@ class RegistryAPI(object):
 
         r = self.request('DELETE', '/facilities/{id}.json'.format(id=id))
         return r.content
-    
+
     def list(self, params=None):
         params = params or {}
 

@@ -48,7 +48,11 @@ class RegistryAPI(object):
         r = self.request('POST', '/facilities.json',
                          data=to_json_string(data),
                          headers={'Content-Type': 'application/json'})
-        return r.headers['Location']
+        data = r.json()
+        if 'url' not in data:
+            data['url'] = r.headers['Location']
+
+        return data
 
     def update(self, id, data):
         if not id:
@@ -104,7 +108,7 @@ class Registry(object):
         """
         Save a facility to the server, posting all of its extended properties
         and non-null core properties.
-        
+
         """
         if facility['active'] is None:
             raise FREDError("active must not be None.")
@@ -114,9 +118,12 @@ class Registry(object):
         if facility['id']:
             self.api.update(facility['id'], dict(facility))
         else:
-            url = self.api.create(dict(facility))
-            facility['url'] = url
-            facility['id'] = url.split('/')[-1]  # this is not ok
+            data = self.api.create(dict(facility))
+            for k, v in data.items():
+                facility[k] = v
+            
+            #facility['url'] = url
+            #facility['id'] = url.split('/')[-1]  # this is not ok
 
     def delete(self, facility):
         """Delete `facility` from the server."""
@@ -202,6 +209,9 @@ class Facility(object):
         return (self.is_new or self.core_properties.is_modified or
                 self.extended_properties.is_modified)
 
+    def to_dict(self):
+        return self.__iter__()
+
     def __iter__(self):
         for prop, val in self.core_properties.items():
             if val is not None:
@@ -221,7 +231,9 @@ class Facility(object):
         if self._deleted:
             raise FREDError("Tried to modify a deleted facility.")
 
-        if name in self.CORE_PROPERTIES:
+        if name == 'properties':
+            self.extended_properties = PropertyDict(val)
+        elif name in self.CORE_PROPERTIES:
             self.core_properties[name] = val
         else:
             raise KeyError("Invalid key: %s" % name)
@@ -291,14 +303,13 @@ class FacilityQuery(object):
 
     def select(self, *properties):
         self.select_properties = tuple(properties)
-        
         return self
    
     def range(self, start=0, end=None, page_size=None):
         # todo: slicing (user-facing) and pagination (api-facing)
 
         return self.query_function(self.params)
-    
+
     def all(self, **kwargs):
         return self.range(**kwargs)
 

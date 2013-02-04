@@ -4,9 +4,17 @@ from dateutil.parser import parse
 import datetime
 import pytz
 import requests
-import uuid
 
 INACTIVE_FACILITY_ID = 'cdmkMyYv04T'
+
+
+def random_string():
+    import random
+    import string
+    return random.choice(['asdf', 'hjkl', 'qwe', 'weurio', 'oyrewiuwer',
+        'werer'])
+    return ''.join([random.choice(string.ascii_uppercase + string.digits)
+                    for i in range(16)])
 
 
 def utcnow():
@@ -14,7 +22,7 @@ def utcnow():
 
 
 class TestFacilityRegistry(unittest.TestCase):
-    
+
     def setUp(self):
         self.registry = freddy.Registry(
             'http://apps.dhis2.org/dev/api-fred/v1',
@@ -48,7 +56,7 @@ class TestFacilityRegistry(unittest.TestCase):
     
     def _create_facility(self):
         facility = self.registry.create(
-            name=str(uuid.uuid4()), coordinates=[32.5468, -23.20])
+            name=random_string(), coordinates=[32.1, -23.20])
 
         facility.save()
         self._created_facility_ids.append(facility['id'])
@@ -56,7 +64,6 @@ class TestFacilityRegistry(unittest.TestCase):
         return facility
 
     def test_create_facility(self):
-        created_at = utcnow() - datetime.timedelta(minutes=1)
 
         facility = self._create_facility()
         self.assertTrue(facility['id'])
@@ -66,6 +73,7 @@ class TestFacilityRegistry(unittest.TestCase):
         r = requests.get(facility['url'])
         r.raise_for_status()
 
+        created_at = utcnow() - datetime.timedelta(minutes=1)
         same_facility = self.registry.get(facility['id'])
         self.assertLess(created_at, same_facility['createdAt'])
         self.assertLess(created_at, same_facility['updatedAt'])
@@ -78,7 +86,7 @@ class TestFacilityRegistry(unittest.TestCase):
         facility = self._create_facility()
         self.assertFalse(facility.is_modified)
 
-        facility['name'] = str(uuid.uuid4())
+        facility['name'] = random_string()
         self.assertTrue(facility.is_modified)
 
         facility.save()
@@ -145,6 +153,11 @@ class TestFacilityRegistry(unittest.TestCase):
 
         self.assertLess(len(facilities), len(all_facilities))
         self.assertTrue(all(f['updatedAt'] >= date for f in facilities))
+
+    def test_filter_that_returns_empty_resultset(self):
+        date = utcnow() - datetime.timedelta(seconds=1)
+
+        list(self.registry.facilities.filter(updatedSince=date))
 
 
 if __name__ == '__main__':

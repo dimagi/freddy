@@ -42,7 +42,9 @@ class RegistryAPI(object):
             raise TypeError("Tried to get a facility with a null id.")
 
         r = self.request('GET', '/facilities/{id}.json'.format(id=id))
-        return r.json()
+        r = r.json()
+        print r
+        return r
 
     def create(self, data):
         r = self.request('POST', '/facilities.json',
@@ -121,9 +123,6 @@ class Registry(object):
             data = self.api.create(facility.to_dict())
             for k, v in data.items():
                 facility[k] = v
-            
-            #facility['url'] = url
-            #facility['id'] = url.split('/')[-1]  # this is not ok
 
     def delete(self, facility):
         """Delete `facility` from the server."""
@@ -239,10 +238,11 @@ class Facility(object):
             raise KeyError("Invalid key: %s" % name)
 
     def get_identifiers_by_agency(agency):
-        """Filter the identifiers property by agency."""
+        """Returns the identifiers property filtered by agency as a list."""
         raise NotImplementedError()
 
     def get_identifiers_by_context(context):
+        """Returns the identifiers property filtered by context as a list."""
         raise NotImplementedError()
 
     def _convert_date(self, key, val):

@@ -14,7 +14,7 @@ setup(
     license='MIT',
     install_requires=[
         'python-dateutil>=1.5',
-        'requests==1.1.0',  # 1.0 is probably fine
+        'requests>=1.1.0',  # 1.0 is probably fine
         'pytz'
     ]
 )

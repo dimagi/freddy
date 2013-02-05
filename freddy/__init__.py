@@ -116,9 +116,9 @@ class Registry(object):
             raise FREDError("coordinates must not be None.")
 
         if facility['id']:
-            self.api.update(facility['id'], dict(facility))
+            self.api.update(facility['id'], facility.to_dict())
         else:
-            data = self.api.create(dict(facility))
+            data = self.api.create(facility.to_dict())
             for k, v in data.items():
                 facility[k] = v
             
@@ -210,7 +210,7 @@ class Facility(object):
                 self.extended_properties.is_modified)
 
     def to_dict(self):
-        return self.__iter__()
+        return dict(self.__iter__())
 
     def __iter__(self):
         for prop, val in self.core_properties.items():
@@ -238,12 +238,11 @@ class Facility(object):
         else:
             raise KeyError("Invalid key: %s" % name)
 
-    def get_identifiers(agency=None, context=None):
-        """
-        Filter the `identifiers` property (a list of dicts with keys 'agency',
-        'context', and 'id') by `agency` and/or `context`.
+    def get_identifiers_by_agency(agency):
+        """Filter the identifiers property by agency."""
+        raise NotImplementedError()
 
-        """
+    def get_identifiers_by_context(context):
         raise NotImplementedError()
 
     def _convert_date(self, key, val):

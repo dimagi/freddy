@@ -14,7 +14,9 @@ def random_string():
 
 
 def utcnow():
-    return datetime.datetime.utcnow().replace(tzinfo=pytz.utc)
+    # Resource Map doesn't handle ISO8601 timestamps with microseconds
+    return datetime.datetime.utcnow().replace(
+            tzinfo=pytz.utc, microsecond=0)
 
 
 class TestFacilityRegistry(unittest.TestCase):
@@ -51,7 +53,8 @@ class TestFacilityRegistry(unittest.TestCase):
         identifiers = self.existing_facility.pop('identifiers')
 
         facility = self.registry.get(self.existing_facility['id'])
-        
+
+        self.assertTrue(facility['url'])
         self.assertIsInstance(facility['updatedAt'], datetime.datetime)
         self.assertIsInstance(facility['properties'], dict)
        
@@ -98,6 +101,9 @@ class TestFacilityRegistry(unittest.TestCase):
         same_facility = self.registry.get(facility['id'])
         self.assertEqual(facility['name'], same_facility['name'])
 
+    def test_update_existing_facility(self):
+        facility = self.registry.get(self.existing_facility['id'])
+
     def test_delete_facility(self):
         facility = self._create_facility()
         facility.delete()
@@ -137,8 +143,6 @@ class TestFacilityRegistry(unittest.TestCase):
         self.assertTrue(False)
 
     def test_get_facility_partial_response(self):
-        return  # server error
-
         facilities = self.registry.facilities.filter(
             active=False
         ).select('url', 'createdAt')
@@ -194,9 +198,24 @@ class TestDHIS2FacilityRegistry(TestFacilityRegistry):
     updated_since_test_date = utcnow() - datetime.timedelta(days=200)
 
 
+class TestResourceMapFacilityRegistry(TestFacilityRegistry):
+    url = 'http://resmap-stg.instedd.org/collections/713/fred_api/v1'
+    username = 'mwhite@dimagi.com'
+    password = 'password'
+
+    existing_facility = {
+        "id": "97911",
+        "name": "test facility 1",
+        "createdAt": parse("2013-02-04T21:25:27Z"),
+        'identifiers': []
+    }
+
+    updated_since_test_date = parse("2013-02-04T22:55:53Z")
+
+
 if __name__ == '__main__':
-    # remove abstract parameterized testcase from global scope so it doesn't
-    # get tested
+    # remove abstract parameterized testcase from scope so it doesn't get
+    # tested
     del TestFacilityRegistry
 
     unittest.main()

@@ -134,7 +134,12 @@ class Registry(object):
         return FacilityQuery(self._query_function)
 
     def _query_function(self, params):
-        results = self.api.list(params=params)['facilities']
+        results = self.api.list(params=params)
+
+        if isinstance(results, dict):
+            # temporary handling of implementations that don't follow the spec
+            results = ['facilities']
+
         for r in results:
             yield self.Facility(**r)
 
@@ -167,7 +172,12 @@ class Facility(object):
     def __init__(self, registry=None, is_new=True, properties=None,
                  **core_properties):
         properties = properties or {}
+
+        core_properties['id'] = unicode(core_properties['id'])
+
+        # ensure required core properties exist
         core_properties['active'] = core_properties.get('active', True)
+        core_properties['identifiers'] = core_properties.get('identifiers', {})
 
         self.registry = registry
         self.is_new = is_new

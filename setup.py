@@ -5,7 +5,6 @@ except ImportError:
 
 setup(
     name='freddy',
-    version='1.0-dev',
     description='Facility Registry API wrapper',
     author='Mike White',
     author_email='mwhite@dimagi.com',

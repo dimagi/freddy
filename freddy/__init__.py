@@ -1,5 +1,4 @@
 import requests
-import dateutil.parser
 from functools import partial
 from .util import PropertyDict, to_urlparam, to_json_string
 
@@ -9,6 +8,23 @@ __all__ = ['Facility', 'Registry']
 class FREDError(Exception):
     pass
 
+
+def set_json_error_or_none(e):
+    """"
+    have to extract this into a function because this raises the second
+    exception, not the first:
+
+    try:
+    except:
+        try:
+        except:
+        raise
+
+    """
+    try:
+        e.fred_error_info = e.response.json()
+    except Exception:
+        e.fred_error_info = None
 
 class RegistryAPI(object):
     """
@@ -29,10 +45,17 @@ class RegistryAPI(object):
         try:
             r.raise_for_status()
         except Exception as e:
+            from pprint import pformat
+
             args = list(e.args)
-            args[0] = args[0] + ". Response body was: {0}".format(
-                    e.response.content)
-            e.args = args
+            args[0] = (args[0] + "\n\nRequest was:\n\n{0} {1}\n\n{2}".format(
+                           method, self.url + path, pformat(kwargs)) +
+                            "\n\nResponse body was: \n\n{0}".format(
+                                e.response.content))
+            e.args = tuple(args)
+
+            set_json_error_or_none(e)
+
             raise
 
         return r
@@ -42,9 +65,7 @@ class RegistryAPI(object):
             raise TypeError("Tried to get a facility with a null id.")
 
         r = self.request('GET', '/facilities/{id}.json'.format(id=id))
-        r = r.json()
-        print r
-        return r
+        return r.json()
 
     def create(self, data):
         r = self.request('POST', '/facilities.json',
@@ -97,8 +118,9 @@ class Registry(object):
     def get(self, id):
         """Get the facility with id `id` from the server."""
 
-        properties = self.api.get(id)
-        return self.Facility(is_new=False, **properties)
+        data = self.api.get(id)
+
+        return self.Facility(new=False, **data)
 
     def create(self, prop_dict=None, **prop_kw):
         """Create a new Facility object without sending it to the server."""
@@ -107,22 +129,24 @@ class Registry(object):
         return self.Facility(**prop_kw)
 
     def save(self, facility):
-        """
-        Save a facility to the server, posting all of its extended properties
-        and non-null core properties.
+        """Save a facility to the server."""
 
-        """
         if facility['active'] is None:
             raise FREDError("active must not be None.")
         if facility['coordinates'] is None:
             raise FREDError("coordinates must not be None.")
 
-        if facility['id']:
-            self.api.update(facility['id'], facility.to_dict())
+        data = facility.to_dict()
+
+        # don't send fields that should only be managed by the server (?)
+        data.pop('createdAt', None)
+        data.pop('updatedAt', None)
+        data.pop('url', None)
+
+        if 'id' in data and data['id']:
+            return self.api.update(data['id'], data)
         else:
-            data = self.api.create(facility.to_dict())
-            for k, v in data.items():
-                facility[k] = v
+            return self.api.create(data)
 
     def delete(self, facility):
         """Delete `facility` from the server."""
@@ -133,68 +157,44 @@ class Registry(object):
     def facilities(self):
         return FacilityQuery(self._query_function)
 
-    def _query_function(self, params):
-        results = self.api.list(params=params)
-
-        if isinstance(results, dict):
-            # temporary handling of implementations that don't follow the spec
-            results = ['facilities']
+    def _query_function(self, params, partial=False):
+        results = self.api.list(params=params)['facilities']
 
         for r in results:
-            yield self.Facility(**r)
+            yield self.Facility(partial=partial, **r)
 
 
 class Facility(object):
     """
     registry -- Registry object to bind to for save() and delete(). If you
         create a Facility without a registry, those methods won't work.
-    is_new -- whether this is a new facility that hasn't been saved to the
+    new -- whether this is a new facility that hasn't been saved to the
         registry yet
+    partial -- whether this is data from a facility list partial response with
+        only some fields
+
+    The remaining keyword arguments are properties of the facility as defined
+    in the Facility Registry API spec with defaults of None, except for active
+    which has a default of True.
 
     """
 
-    CORE_PROPERTIES = [
-        'name',
-        'id',
-        'url',
-        'identifiers',
-        'coordinates',
-        'active',
+    DATE_PROPERTIES = (
         'createdAt',
         'updatedAt'
-    ]
+    )
 
-    DATE_PROPERTIES = [
-        'createdAt',
-        'updatedAt'
-    ]
+    EXTENDED_DATE_PROPERTIES = ()
 
-    def __init__(self, registry=None, is_new=True, properties=None,
-                 **core_properties):
-        properties = properties or {}
-
-        core_properties['id'] = unicode(core_properties['id'])
-
-        # ensure required core properties exist
-        core_properties['active'] = core_properties.get('active', True)
-        core_properties['identifiers'] = core_properties.get('identifiers', {})
-
+    def __init__(self, registry=None, new=True, partial=False, **kwargs):
         self.registry = registry
-        self.is_new = is_new
+        self._new = new
+        self._partial = partial
         self._deleted = False
+        
+        self.data = self._get_property_dict(**kwargs)
+        
 
-        self.core_properties = PropertyDict(
-            (p, self._convert_date(p, core_properties.pop(p, None))) 
-            for p in self.CORE_PROPERTIES)
-
-        if core_properties:
-            raise ValueError("Unrecognized core properties: %s" % 
-                    ", ".join(core_properties))
-
-        # extended properties defined in the 'properties' block
-        self.extended_properties = PropertyDict(
-            (p, self._convert_date(p, v)) for p, v in properties.items())
-    
     def delete(self):
         if not self['id']:
             raise FREDError("Tried to delete an unsaved facility.")
@@ -207,61 +207,77 @@ class Facility(object):
     def save(self):
         if self._deleted:
             raise FREDError("Tried to save a deleted facility.")
+        # remove once partial updates is implemented
+        if self._partial:
+            raise FREDError("Tried to save a partial response facility.")
 
-        self.registry.save(self)
-        self.is_new = False
-        self.core_properties.is_modified = False
-        self.extended_properties.is_modified = False
+        data = self.registry.save(self)
+        self.data = self._get_property_dict(**data)
+        self._new = False
+
+    @property
+    def is_touched(self):
+        return (self._new or self.data.is_touched)
 
     @property
     def is_modified(self):
-        return (self.is_new or self.core_properties.is_modified or
-                self.extended_properties.is_modified)
+        return (self._new or self.data.is_modified)
 
     def to_dict(self):
         return dict(self.__iter__())
 
     def __iter__(self):
-        for prop, val in self.core_properties.items():
+        for prop, val in self.data.items():
             if val is not None:
                 yield (prop, val)
 
-        yield ('properties', self.extended_properties)
-
     def __getitem__(self, name):
-        if name == 'properties':
-            return self.extended_properties
-        elif name in self.CORE_PROPERTIES:
-            return self.core_properties[name]
-        else:
-            raise KeyError("Invalid key: %s" % name)
+        return self.data[name]
 
     def __setitem__(self, name, val):
         if self._deleted:
             raise FREDError("Tried to modify a deleted facility.")
 
         if name == 'properties':
-            self.extended_properties = PropertyDict(val)
-        elif name in self.CORE_PROPERTIES:
-            self.core_properties[name] = val
-        else:
-            raise KeyError("Invalid key: %s" % name)
+            raise FREDError("Can't reassign the extended properties property.")
 
-    def get_identifiers_by_agency(agency):
-        """Returns the identifiers property filtered by agency as a list."""
-        raise NotImplementedError()
+        self.data[name] = val
 
-    def get_identifiers_by_context(context):
-        """Returns the identifiers property filtered by context as a list."""
-        raise NotImplementedError()
+    def get_identifiers(self, agency=None, context=None):
+        """
+        A generator that returns the identifiers matching agency or context.
 
-    def _convert_date(self, key, val):
-        if val is None:
-            return val
-        elif key in self.DATE_PROPERTIES:
-            return dateutil.parser.parse(val)
-        else:
-            return val
+        """
+        return [id for id in self['identifiers']
+                if ((agency == id['agency'] or agency is None) and
+                    (context == id['context'] or context is None))]
+
+    def _get_property_dict(self, id=None, name=None, url=None,
+                           identifiers=None, coordinates=None, active=True,
+                           createdAt=None, updatedAt=None, properties=None):
+        properties = PropertyDict(
+            properties or {},
+            date_properties=self.EXTENDED_DATE_PROPERTIES)
+
+        # hack for DHIS2 until they fix their IDs
+        if identifiers:
+            dhis2_uid_ids = filter(
+                    lambda id: id['context'] == 'DHIS2_UID', identifiers)
+            if dhis2_uid_ids:
+                self.real_id = id
+                id = dhis2_uid_ids[0]['id']
+
+        return PropertyDict({
+            'id': unicode(id) if id else id,
+            'name': name,
+            'url': url,
+            'identifiers': identifiers or [],
+            'coordinates': coordinates,
+            'active': active,
+            'createdAt': createdAt,
+            'updatedAt': updatedAt,
+            'properties': properties
+        }, date_properties=self.DATE_PROPERTIES)
 
 
 class FacilityQuery(object):
@@ -313,11 +329,12 @@ class FacilityQuery(object):
     def select(self, *properties):
         self.select_properties = tuple(properties)
         return self
-   
+
     def range(self, start=0, end=None, page_size=None):
         # todo: slicing (user-facing) and pagination (api-facing)
 
-        return self.query_function(self.params)
+        return self.query_function(
+                self.params, partial=self.select_properties)
 
     def all(self, **kwargs):
         return self.range(**kwargs)

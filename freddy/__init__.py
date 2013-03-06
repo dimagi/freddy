@@ -142,9 +142,10 @@ class Registry(object):
         data.pop('createdAt', None)
         data.pop('updatedAt', None)
         data.pop('url', None)
+        id = data.pop('id', None)
 
-        if 'id' in data and data['id']:
-            return self.api.update(data['id'], data)
+        if id:
+            return self.api.update(id, data)
         else:
             return self.api.create(data)
 

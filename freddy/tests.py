@@ -4,7 +4,7 @@ from dateutil.parser import parse
 import datetime
 import pytz
 import requests
-
+import time
 
 def random_string():
     import random
@@ -106,6 +106,7 @@ class TestFacilityRegistry(unittest.TestCase):
 
     def test_update_existing_facility(self):
         facility = self.registry.get(self.existing_facility['id'])
+        old_name = facility['name']
 
         new_name = facility['name'] + ' ' + random_string()
         facility['name'] = new_name
@@ -115,6 +116,9 @@ class TestFacilityRegistry(unittest.TestCase):
 
         same_facility = self.registry.get(facility['id'])
         self.assertEqual(same_facility['name'], new_name)
+
+        same_facility['name'] = old_name
+        same_facility.save()
 
     def test_delete_facility(self):
         facility = self._create_facility()
@@ -146,13 +150,13 @@ class TestFacilityRegistry(unittest.TestCase):
         self.assertGreater(
                 self.inactive_facilities_count_upper_bound, len(facilities))
 
-    def test_facilities_iteration(self):
+    def test_inactive_facilities_iteration(self):
         for f in self.registry.facilities.filter(active=False):
             if f['id'] == self.inactive_facility_id:
-                self.assertTrue(True)
                 return
 
-        self.assertTrue(False)
+        self.fail("inactive facility {0} not found".format(
+                self.inactive_facility_id))
 
     def test_get_facility_partial_response(self):
         return  # no one implements this yet
@@ -174,9 +178,10 @@ class TestFacilityRegistry(unittest.TestCase):
         self.assertLess(len(facilities), len(all_facilities))
         self.assertTrue(all(f['updatedAt'] >= date for f in facilities))
 
-    def test_filter_that_returns_empty_resultset(self):
+    def test_filter_that_returns_empty_resultset_format(self):
         """ResourceMap was returning {} instead of {facilities: []}"""
 
+        time.sleep(2)
         date = utcnow() - datetime.timedelta(seconds=1)
 
         list(self.registry.facilities.filter(updatedSince=date))
@@ -227,7 +232,7 @@ class TestResourceMapFacilityRegistry(TestFacilityRegistry):
         'coordinates': [90.0, 10.0]
     }
 
-    updated_since_test_date = parse("2013-02-05T03:25:32Z")
+    updated_since_test_date = parse("2013-02-05T04:55:59Z")
 
 
 if __name__ == '__main__':

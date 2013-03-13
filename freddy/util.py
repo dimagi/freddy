@@ -110,8 +110,6 @@ class PropertyDict(ChangeTrackingDict):
 
 def to_json(val):
     if isinstance(val, datetime.datetime):
-        # always use UTC
-        val.replace(tzinfo=pytz.utc)
         return val.isoformat()
     else:
         return val

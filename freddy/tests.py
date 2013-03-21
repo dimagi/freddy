@@ -195,8 +195,7 @@ class TestDHIS2FacilityRegistry(TestFacilityRegistry):
     existing_facility = {
         # DHIS2 is currently broken and accepts only queries with DHIS2_UIDs
         # instead of the UUID used as id
-        'id': 'ueuQlqb8ccl',
-        #'id': '532873d0-7508-4b80-8a99-65e689dd5744',
+        'id': 'b1c9eff6-92e0-465b-8e33-71012171eeb2',
         'name': " Panderu MCHP",
         'createdAt': parse("2012-02-17T14:54:39.987+0000"),
         'identifiers': [
@@ -213,10 +212,10 @@ class TestDHIS2FacilityRegistry(TestFacilityRegistry):
         ]
     }
 
-    inactive_facility_id = 'cdmkMyYv04T'
+    inactive_facility_id = "5d9fbd1d-a2f5-441d-9238-60ae94f327b0"
     inactive_facilities_count_upper_bound = 10
 
-    updated_since_test_date = utcnow() - datetime.timedelta(days=200)
+    updated_since_test_date = parse("2013-03-21T18:09:52")
 
 
 class TestResourceMapFacilityRegistry(TestFacilityRegistry):

@@ -5,6 +5,36 @@ from .util import PropertyDict, to_urlparam, to_json_string
 __all__ = ['Facility', 'Registry']
 
 
+# These functions encapsulate differences between JSON representations of a
+# facility for different provider implementations as we move towards a
+# finalized version of the API.
+def transform_incoming_data(data):
+    if 'uuid' in data:
+        data['id'] = data.pop('uuid')
+
+    if 'href' in data:
+        data['url'] = data.pop('href')
+
+    return data
+
+def transform_outgoing_data(data, url):
+    if 'resmap' in url or True:
+        data.pop('createdAt', None)
+        data.pop('updatedAt', None)
+        data.pop('url', None)
+
+    if 'dhis2' in url:
+        if 'id' in data:
+            data['uuid'] = data['id']
+
+        if 'url' in data:
+            data['href'] = data['url']
+
+    id = data.pop('id', None)
+
+    return data
+
+
 class FREDError(Exception):
     pass
 
@@ -25,6 +55,7 @@ def set_json_error_or_none(e):
         e.fred_error_info = e.response.json()
     except Exception:
         e.fred_error_info = None
+
 
 class RegistryAPI(object):
     """
@@ -65,9 +96,13 @@ class RegistryAPI(object):
             raise TypeError("Tried to get a facility with a null id.")
 
         r = self.request('GET', '/facilities/{id}.json'.format(id=id))
-        return r.json()
+        data = r.json()
+
+        return transform_incoming_data(data)
 
     def create(self, data):
+        data = transform_outgoing_data(data, self.url)
+
         r = self.request('POST', '/facilities.json',
                          data=to_json_string(data),
                          headers={'Content-Type': 'application/json'})
@@ -75,16 +110,19 @@ class RegistryAPI(object):
         if 'url' not in data:
             data['url'] = r.headers['Location']
 
-        return data
+        return transform_incoming_data(data)
 
     def update(self, id, data):
+        data = transform_outgoing_data(data, self.url)
+
         if not id:
             raise TypeError("Tried to update a facility with a null id.")
 
         r = self.request('PUT', '/facilities/{id}.json'.format(id=id),
                          data=to_json_string(data),
                          headers={'Content-Type': 'application/json'})
-        return r.json()
+
+        return transform_incoming_data(r.json())
 
     def delete(self, id):
         if not id:
@@ -97,7 +135,10 @@ class RegistryAPI(object):
         params = params or {}
 
         r = self.request('GET', '/facilities.json', params=params)
-        return r.json()
+        json = r.json()
+        json['facilities'] = [transform_incoming_data(f) for f in json['facilities']]
+
+        return json
 
 
 class Registry(object):
@@ -138,11 +179,7 @@ class Registry(object):
 
         data = facility.to_dict()
 
-        # don't send fields that should only be managed by the server (?)
-        data.pop('createdAt', None)
-        data.pop('updatedAt', None)
-        data.pop('url', None)
-        id = data.pop('id', None)
+        id = data.get('id')
 
         if id:
             return self.api.update(id, data)
@@ -195,7 +232,6 @@ class Facility(object):
         
         self.data = self._get_property_dict(**kwargs)
         
-
     def delete(self):
         if not self['id']:
             raise FREDError("Tried to delete an unsaved facility.")
@@ -259,14 +295,6 @@ class Facility(object):
         properties = PropertyDict(
             properties or {},
             date_properties=self.EXTENDED_DATE_PROPERTIES)
-
-        # hack for DHIS2 until they fix their IDs
-        if identifiers:
-            dhis2_uid_ids = filter(
-                    lambda id: id['context'] == 'DHIS2_UID', identifiers)
-            if dhis2_uid_ids:
-                self.real_id = id
-                id = dhis2_uid_ids[0]['id']
 
         return PropertyDict({
             'id': unicode(id) if id else id,

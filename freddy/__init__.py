@@ -8,30 +8,25 @@ __all__ = ['Facility', 'Registry']
 # These functions encapsulate differences between JSON representations of a
 # facility for different provider implementations as we move towards a
 # finalized version of the API.
-def transform_incoming_data(data):
-    if 'uuid' in data:
-        data['id'] = data.pop('uuid')
-
-    if 'href' in data:
-        data['url'] = data.pop('href')
+def transform_incoming_data(data, url):
+    if 'resmap' in url:
+        data['uuid'] = data.pop('id')
+        data['href'] = data.pop('url')
 
     return data
 
 def transform_outgoing_data(data, url):
-    if 'resmap' in url or True:
+    if 'resmap' in url:
+        if 'uuid' in data:
+            data['id'] = data.pop('uuid')
+        if 'href' in data:
+            data['url'] = data.pop('href')
+
         data.pop('createdAt', None)
         data.pop('updatedAt', None)
         data.pop('url', None)
-
-    if 'dhis2' in url:
-        if 'id' in data:
-            data['uuid'] = data['id']
-
-        if 'url' in data:
-            data['href'] = data['url']
-
-    id = data.pop('id', None)
-
+        data.pop('id', None)
+    
     return data
 
 
@@ -98,7 +93,7 @@ class RegistryAPI(object):
         r = self.request('GET', '/facilities/{id}.json'.format(id=id))
         data = r.json()
 
-        return transform_incoming_data(data)
+        return transform_incoming_data(data, self.url)
 
     def create(self, data):
         data = transform_outgoing_data(data, self.url)
@@ -107,10 +102,10 @@ class RegistryAPI(object):
                          data=to_json_string(data),
                          headers={'Content-Type': 'application/json'})
         data = r.json()
-        if 'url' not in data:
-            data['url'] = r.headers['Location']
+        if 'href' not in data:
+            data['href'] = r.headers['Location']
 
-        return transform_incoming_data(data)
+        return transform_incoming_data(data, self.url)
 
     def update(self, id, data):
         data = transform_outgoing_data(data, self.url)
@@ -122,7 +117,7 @@ class RegistryAPI(object):
                          data=to_json_string(data),
                          headers={'Content-Type': 'application/json'})
 
-        return transform_incoming_data(r.json())
+        return transform_incoming_data(r.json(), self.url)
 
     def delete(self, id):
         if not id:
@@ -136,7 +131,7 @@ class RegistryAPI(object):
 
         r = self.request('GET', '/facilities.json', params=params)
         json = r.json()
-        json['facilities'] = [transform_incoming_data(f) for f in json['facilities']]
+        json['facilities'] = [transform_incoming_data(f, self.url) for f in json['facilities']]
 
         return json
 
@@ -178,18 +173,17 @@ class Registry(object):
             raise FREDError("coordinates must not be None.")
 
         data = facility.to_dict()
+        uuid = data.get('uuid')
 
-        id = data.get('id')
-
-        if id:
-            return self.api.update(id, data)
+        if uuid:
+            return self.api.update(uuid, data)
         else:
             return self.api.create(data)
 
     def delete(self, facility):
         """Delete `facility` from the server."""
 
-        self.api.delete(facility['id'])
+        self.api.delete(facility['uuid'])
 
     @property
     def facilities(self):
@@ -233,7 +227,7 @@ class Facility(object):
         self.data = self._get_property_dict(**kwargs)
         
     def delete(self):
-        if not self['id']:
+        if not self['uuid']:
             raise FREDError("Tried to delete an unsaved facility.")
         if self._deleted:
             raise FREDError("Tried to delete a deleted facility.")
@@ -289,7 +283,7 @@ class Facility(object):
                 if ((agency == id['agency'] or agency is None) and
                     (context == id['context'] or context is None))]
 
-    def _get_property_dict(self, id=None, name=None, url=None,
+    def _get_property_dict(self, uuid=None, name=None, href=None,
                            identifiers=None, coordinates=None, active=True,
                            createdAt=None, updatedAt=None, properties=None):
         properties = PropertyDict(
@@ -297,9 +291,9 @@ class Facility(object):
             date_properties=self.EXTENDED_DATE_PROPERTIES)
 
         return PropertyDict({
-            'id': unicode(id) if id else id,
+            'uuid': unicode(uuid) if uuid else uuid,
             'name': name,
-            'url': url,
+            'href': href,
             'identifiers': identifiers or [],
             'coordinates': coordinates,
             'active': active,

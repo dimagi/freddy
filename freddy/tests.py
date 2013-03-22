@@ -25,7 +25,7 @@ class TestFacilityRegistry(unittest.TestCase):
     password = None
 
     existing_facility = None
-    inactive_facility_id = None
+    inactive_facility_uuid = None
     inactive_facilities_count_upper_bound = None
 
     # a datetime.datetime such that some facilities on the server were last
@@ -36,27 +36,27 @@ class TestFacilityRegistry(unittest.TestCase):
         self.registry = freddy.Registry(
                 self.url, username=self.username, password=self.password)
 
-        self._created_facility_ids = []
+        self._created_facility_uuids = []
 
     def tearDown(self):
-        for id in self._created_facility_ids:
-            self.registry.api.delete(id)
+        for uuid in self._created_facility_uuids:
+            self.registry.api.delete(uuid)
     
     def _create_facility(self):
         facility = self.registry.create(
             name=random_string(), coordinates=[32.1, -23.20])
 
         facility.save()
-        self._created_facility_ids.append(facility['id'])
+        self._created_facility_uuids.append(facility['uuid'])
 
         return facility
 
     def test_get_facility(self):
         identifiers = self.existing_facility.pop('identifiers')
 
-        facility = self.registry.get(self.existing_facility['id'])
+        facility = self.registry.get(self.existing_facility['uuid'])
 
-        self.assertTrue(facility['url'])
+        self.assertTrue(facility['href'])
         self.assertIsInstance(facility['updatedAt'], datetime.datetime)
         self.assertIsInstance(facility['properties'], dict)
        
@@ -74,15 +74,15 @@ class TestFacilityRegistry(unittest.TestCase):
 
         facility = self._create_facility()
 
-        self.assertTrue(facility['id'])
+        self.assertTrue(facility['uuid'])
         self.assertTrue(facility['createdAt'])
         self.assertTrue(facility['updatedAt'])
 
-        r = requests.get(facility['url'])
+        r = requests.get(facility['href'])
         #r.raise_for_status()
 
         created_at = utcnow() - datetime.timedelta(minutes=1)
-        same_facility = self.registry.get(facility['id'])
+        same_facility = self.registry.get(facility['uuid'])
         self.assertLess(created_at, same_facility['createdAt'])
         self.assertLess(created_at, same_facility['updatedAt'])
         for k, v in same_facility:
@@ -101,11 +101,11 @@ class TestFacilityRegistry(unittest.TestCase):
 
         self.assertFalse(facility.is_modified)
 
-        same_facility = self.registry.get(facility['id'])
+        same_facility = self.registry.get(facility['uuid'])
         self.assertEqual(facility['name'], same_facility['name'])
 
     def test_update_existing_facility(self):
-        facility = self.registry.get(self.existing_facility['id'])
+        facility = self.registry.get(self.existing_facility['uuid'])
         old_name = facility['name']
 
         new_name = facility['name'] + ' ' + random_string()
@@ -114,7 +114,7 @@ class TestFacilityRegistry(unittest.TestCase):
         facility.save()
         self.assertEqual(facility['name'], new_name)
 
-        same_facility = self.registry.get(facility['id'])
+        same_facility = self.registry.get(facility['uuid'])
         self.assertEqual(same_facility['name'], new_name)
 
         same_facility['name'] = old_name
@@ -134,17 +134,17 @@ class TestFacilityRegistry(unittest.TestCase):
             facility.delete()
 
         with self.assertRaises(requests.HTTPError):
-            self.registry.get(facility['id'])
+            self.registry.get(facility['uuid'])
 
         with self.assertRaises(requests.HTTPError):
-            self.registry.api.delete(facility['id'])
+            self.registry.api.delete(facility['uuid'])
 
-        self._created_facility_ids = []
+        self._created_facility_uuids = []
 
     def test_filter_by_inactive(self):
         facilities = list(self.registry.facilities.filter(active=False).all())
 
-        self.assertTrue(any(f['id'] == self.inactive_facility_id
+        self.assertTrue(any(f['uuid'] == self.inactive_facility_uuid
                             for f in facilities))
 
         self.assertGreater(
@@ -152,22 +152,22 @@ class TestFacilityRegistry(unittest.TestCase):
 
     def test_inactive_facilities_iteration(self):
         for f in self.registry.facilities.filter(active=False):
-            if f['id'] == self.inactive_facility_id:
+            if f['uuid'] == self.inactive_facility_uuid:
                 return
 
         self.fail("inactive facility {0} not found".format(
-                self.inactive_facility_id))
+                self.inactive_facility_uuid))
 
     def test_get_facility_partial_response(self):
         return  # no one implements this yet
         facilities = self.registry.facilities.filter(
             active=False
-        ).select('url', 'createdAt')
+        ).select('href', 'createdAt')
 
         for f in facilities:
             self.assertEqual(None, f['name'])
             self.assertTrue(f['createdAt'])
-            self.assertTrue(f['url'])
+            self.assertTrue(f['href'])
 
     def test_filter_by_updated_since(self):
         date = self.updated_since_test_date
@@ -193,9 +193,7 @@ class TestDHIS2FacilityRegistry(TestFacilityRegistry):
     password = 'System123'
 
     existing_facility = {
-        # DHIS2 is currently broken and accepts only queries with DHIS2_UIDs
-        # instead of the UUID used as id
-        'id': 'b1c9eff6-92e0-465b-8e33-71012171eeb2',
+        'uuid': 'b1c9eff6-92e0-465b-8e33-71012171eeb2',
         'name': " Panderu MCHP",
         'createdAt': parse("2012-02-17T14:54:39.987+0000"),
         'identifiers': [
@@ -212,7 +210,7 @@ class TestDHIS2FacilityRegistry(TestFacilityRegistry):
         ]
     }
 
-    inactive_facility_id = "5d9fbd1d-a2f5-441d-9238-60ae94f327b0"
+    inactive_facility_uuid = "5d9fbd1d-a2f5-441d-9238-60ae94f327b0"
     inactive_facilities_count_upper_bound = 10
 
     updated_since_test_date = parse("2013-03-21T18:09:52")
@@ -224,14 +222,14 @@ class TestResourceMapFacilityRegistry(TestFacilityRegistry):
     password = 'password'
 
     existing_facility = {
-        "id": "97911",
+        "uuid": "97911",
         "name": "test facility 1",
         "createdAt": parse("2013-02-05T03:25:27Z"),
         'identifiers': [],
         'coordinates': [90.0, 10.0]
     }
 
-    updated_since_test_date = parse("2013-02-05T04:55:59Z")
+    updated_since_test_date = parse("2013-02-05T04:55:59")
 
 
 if __name__ == '__main__':

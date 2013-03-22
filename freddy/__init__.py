@@ -276,7 +276,7 @@ class Facility(object):
 
     def get_identifiers(self, agency=None, context=None):
         """
-        A generator that returns the identifiers matching agency or context.
+        Returns a list of identifiers matching agency and context.
 
         """
         return [id for id in self['identifiers']
@@ -362,15 +362,15 @@ class FacilityQuery(object):
         start = start or 0
         page_size = page_size or (end - start if end else 'off')
 
-        self.params.update({
+        params = self.params
+        params.update({
             'offset': start,
             'limit': page_size
         })
 
         self._executed = True
 
-        return self.query_function(
-                self.params, partial=self.select_properties)
+        return self.query_function(params, partial=self.select_properties)
 
     def all(self, **kwargs):
         return self.range(**kwargs)

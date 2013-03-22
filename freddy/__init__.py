@@ -327,6 +327,8 @@ class FacilityQuery(object):
         self.sort_clauses = ()
         self.select_properties = ()
 
+        self._executed = False
+
     def filter(self, filter_dict=None, **filter_kw):
         filter_kw.update(filter_dict or {})
         self.filter_dict.update(filter_kw)
@@ -359,8 +361,19 @@ class FacilityQuery(object):
         self.select_properties = tuple(properties)
         return self
 
-    def range(self, start=0, end=None, page_size=None):
-        # todo: slicing (user-facing) and pagination (api-facing)
+    def range(self, start=None, end=None, page_size=None):
+        if self._executed:
+            raise FREDError("Tried to re-execute an executed query.")
+
+        start = start or 0
+        page_size = page_size or (end - start if end else 'off')
+
+        self.params.update({
+            'offset': start,
+            'limit': page_size
+        })
+
+        self._executed = True
 
         return self.query_function(
                 self.params, partial=self.select_properties)

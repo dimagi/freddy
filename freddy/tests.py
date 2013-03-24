@@ -158,8 +158,8 @@ class TestFacilityRegistry(unittest.TestCase):
         self.fail("inactive facility {0} not found".format(
                 self.inactive_facility_uuid))
 
+    @unittest.expectedFailure
     def test_get_facility_partial_response(self):
-        return  # no one implements this yet
         facilities = self.registry.facilities.filter(
             active=False
         ).select('href', 'createdAt')
@@ -229,7 +229,7 @@ class TestResourceMapFacilityRegistry(TestFacilityRegistry):
         'coordinates': [90.0, 10.0]
     }
 
-    updated_since_test_date = parse("2013-02-05T04:55:59")
+    updated_since_test_date = parse("2013-02-05T04:55:59Z")
 
 
 if __name__ == '__main__':

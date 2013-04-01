@@ -124,13 +124,13 @@ class TestFacilityRegistry(unittest.TestCase):
         facility = self._create_facility()
         facility.delete()
 
-        with self.assertRaises(freddy.FREDError):
+        with self.assertRaises(freddy.FredError):
             facility['name'] = 'foo'
 
-        with self.assertRaises(freddy.FREDError):
+        with self.assertRaises(freddy.FredError):
             facility.save()
 
-        with self.assertRaises(freddy.FREDError):
+        with self.assertRaises(freddy.FredError):
             facility.delete()
 
         with self.assertRaises(requests.HTTPError):

@@ -30,26 +30,14 @@ def transform_outgoing_data(data, url):
     return data
 
 
-class FREDError(Exception):
+class FredError(Exception):
     pass
 
+class FredHttpError(FredError):
+    pass
 
-def set_json_error_or_none(e):
-    """"
-    have to extract this into a function because this raises the second
-    exception, not the first:
-
-    try:
-    except:
-        try:
-        except:
-        raise
-
-    """
-    try:
-        e.fred_error_info = e.response.json()
-    except Exception:
-        e.fred_error_info = None
+class FredAuthenticationError(FredHttpError):
+    pass
 
 
 class RegistryAPI(object):
@@ -78,11 +66,21 @@ class RegistryAPI(object):
                            method, self.url + path, pformat(kwargs)) +
                             "\n\nResponse body was: \n\n{0}".format(
                                 e.response.content))
-            e.args = tuple(args)
 
-            set_json_error_or_none(e)
+            if e.response.status_code == 401:
+                exception_class = FredAuthenticationError
+            else:
+                exception_class = FredHttpError
 
-            raise
+            exc = exception_class(*args)
+            exc.response = e.response
+
+            try:
+                exc.fred_error_info = e.response.json()
+            except Exception:
+                exc.fred_error_info = None
+
+            raise exc
 
         return r
 
@@ -168,9 +166,9 @@ class Registry(object):
         """Save a facility to the server."""
 
         if facility['active'] is None:
-            raise FREDError("active must not be None.")
+            raise FredError("active must not be None.")
         if facility['coordinates'] is None:
-            raise FREDError("coordinates must not be None.")
+            raise FredError("coordinates must not be None.")
 
         data = facility.to_dict()
         uuid = data.get('uuid')
@@ -228,19 +226,19 @@ class Facility(object):
         
     def delete(self):
         if not self['uuid']:
-            raise FREDError("Tried to delete an unsaved facility.")
+            raise FredError("Tried to delete an unsaved facility.")
         if self._deleted:
-            raise FREDError("Tried to delete a deleted facility.")
+            raise FredError("Tried to delete a deleted facility.")
 
         self.registry.delete(self)
         self._deleted = True
 
     def save(self):
         if self._deleted:
-            raise FREDError("Tried to save a deleted facility.")
+            raise FredError("Tried to save a deleted facility.")
         # remove once partial updates is implemented
         if self._partial:
-            raise FREDError("Tried to save a partial response facility.")
+            raise FredError("Tried to save a partial response facility.")
 
         data = self.registry.save(self)
         self.data = self._get_property_dict(**data)
@@ -267,10 +265,10 @@ class Facility(object):
 
     def __setitem__(self, name, val):
         if self._deleted:
-            raise FREDError("Tried to modify a deleted facility.")
+            raise FredError("Tried to modify a deleted facility.")
 
         if name == 'properties':
-            raise FREDError("Can't reassign the extended properties property.")
+            raise FredError("Can't reassign the extended properties property.")
 
         self.data[name] = val
 
@@ -331,13 +329,13 @@ class FacilityQuery(object):
 
     def sort(self, clauses):
         if self.is_sorted:
-            raise FREDError()
+            raise FredError()
 
         raise NotImplementedError()
 
     def sort_asc(self, prop):
         if self.is_sorted:
-            raise FREDError()
+            raise FredError()
 
         self.sort_asc_prop_name = prop
 
@@ -345,7 +343,7 @@ class FacilityQuery(object):
 
     def sort_desc(self, prop):
         if self.is_sorted:
-            raise FREDError()
+            raise FredError()
 
         self.sort_desc_prop = prop
 
@@ -357,7 +355,7 @@ class FacilityQuery(object):
 
     def range(self, start=None, end=None, page_size=None):
         if self._executed:
-            raise FREDError("Tried to re-execute an executed query.")
+            raise FredError("Tried to re-execute an executed query.")
 
         start = start or 0
         page_size = page_size or (end - start if end else 'off')
